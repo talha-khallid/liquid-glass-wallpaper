@@ -231,7 +231,7 @@
 
         <!-- 24-Hour Format Toggle -->
         <div class="bar-item">
-          <label class="bar-label" for="format-checkbox">24H</label>
+          <label class="bar-label" id="format-label" for="format-checkbox">24H</label>
           <label class="ios-switch">
             <input type="checkbox" id="format-checkbox" checked />
             <span class="slider-switch"></span>
@@ -298,6 +298,7 @@
       let is24Hour = true;
       let showSeconds = false;
       let parallaxEnabled = true;
+      let bgZoomScale = 1.05; // 1.05 when parallax ON, 1.00 when parallax OFF
 
       let parsedFont = null;
       const pointer = { x: 0, y: 0, targetX: 0, targetY: 0 };
@@ -358,14 +359,14 @@
       scene.add(clockGroup);
       let textMesh = null;
 
-      // Background Plane with Aspect Ratio Shader
+      // Background Plane with Aspect Ratio Cover Shader
       const bgMaterial = new ShaderMaterial({
         uniforms: {
           map: { value: null },
           viewportResolution: {
             value: new Vector2(window.innerWidth, window.innerHeight),
           },
-          imageResolution: { value: new Vector2(20, 10) },
+          imageResolution: { value: new Vector2(1920, 1080) },
         },
         vertexShader: `
           varying vec2 vUv;
@@ -394,7 +395,7 @@
               screenUV.x = screenUV.x * scale + offset.x;
             } else {
               scale = imageAspect / viewportAspect;
-              offset.y = (1.0 - scale) * 0.25;
+              offset.y = (1.0 - scale) * 0.5;
               screenUV.y = screenUV.y * scale + offset.y;
             }
             screenUV = clamp(screenUV, 0.0, 1.0);
@@ -406,19 +407,25 @@
         depthWrite: false,
       });
 
+      // Unit Plane Geometry [1, 1] scaled exactly to viewport
       const bgPlane = new Mesh(
-        new PlaneGeometry(2.8, 2.8),
+        new PlaneGeometry(1, 1),
         bgMaterial
       );
       bgPlane.position.set(0, 0, -1.5);
       scene.add(bgPlane);
 
+      let vPlaneWidth = 1;
+      let vPlaneHeight = 1;
+
       function updateBgDimensions() {
         const vFov = (camera.fov * Math.PI) / 180;
-        const vHeight =
+        vPlaneHeight =
           2 * Math.tan(vFov / 2) * (camera.position.z - bgPlane.position.z);
-        const vWidth = vHeight * camera.aspect;
-        bgPlane.scale.set(vWidth / 1.3, vHeight / 1.3, 1);
+        vPlaneWidth = vPlaneHeight * camera.aspect;
+        
+        const scaleFactor = parallaxEnabled ? 1.05 : 1.0;
+        bgPlane.scale.set(vPlaneWidth * scaleFactor, vPlaneHeight * scaleFactor, 1);
         bgMaterial.uniforms.viewportResolution.value.set(
           window.innerWidth,
           window.innerHeight
@@ -429,6 +436,9 @@
       const textureLoader = new TextureLoader();
       const bgData = (window.BACKGROUNDS_DATA && window.BACKGROUNDS_DATA.bg1) || "./bg1.png";
       textureLoader.load(bgData, (tex) => {
+        if (tex.image && tex.image.width && tex.image.height) {
+          bgMaterial.uniforms.imageResolution.value.set(tex.image.width, tex.image.height);
+        }
         bgMaterial.uniforms.map.value = tex;
       });
 
@@ -450,7 +460,9 @@
         if (!is24Hour) {
           h = h % 12 || 12;
         }
-        const hours = String(h).padStart(2, "0");
+        // In 24h mode: padded with leading zero ('09', '14')
+        // In 12h mode: clean format ('9', '11', '12')
+        const hours = is24Hour ? String(h).padStart(2, "0") : String(h);
         const minutes = String(now.getMinutes()).padStart(2, "0");
 
         if (showSeconds) {
@@ -538,14 +550,18 @@
       });
 
       const formatCheckbox = document.getElementById("format-checkbox");
+      const formatLabel = document.getElementById("format-label");
       formatCheckbox.addEventListener("change", (e) => {
         is24Hour = e.target.checked;
+        formatLabel.textContent = is24Hour ? "24H" : "12H";
+        lastRenderTime = "";
         updateClock();
       });
 
       const secondsCheckbox = document.getElementById("seconds-checkbox");
       secondsCheckbox.addEventListener("change", (e) => {
         showSeconds = e.target.checked;
+        lastRenderTime = "";
         updateClock();
       });
 
@@ -569,15 +585,22 @@
         pointer.x += (pointer.targetX - pointer.x) * (delta * 6);
         pointer.y += (pointer.targetY - pointer.y) * (delta * 6);
 
-        // Subtle background parallax
-        bgPlane.position.x +=
-          (-pointer.x * 0.08 - bgPlane.position.x) * (delta * 6);
-        bgPlane.position.y +=
-          (-pointer.y * 0.05 - bgPlane.position.y) * (delta * 6);
+        // Target background zoom scale
+        const targetZoom = parallaxEnabled ? 1.05 : 1.0;
+        bgZoomScale += (targetZoom - bgZoomScale) * (delta * 6);
+        bgPlane.scale.set(vPlaneWidth * bgZoomScale, vPlaneHeight * bgZoomScale, 1);
+
+        // Subtle background parallax (smoothly returns to 0 when disabled)
+        const targetPosX = parallaxEnabled ? -pointer.x * 0.08 : 0;
+        const targetPosY = parallaxEnabled ? -pointer.y * 0.05 : 0;
+        bgPlane.position.x += (targetPosX - bgPlane.position.x) * (delta * 6);
+        bgPlane.position.y += (targetPosY - bgPlane.position.y) * (delta * 6);
 
         // Dynamic light tracking through glass
-        dirLight.position.x += (pointer.x - dirLight.position.x) * (delta * 6);
-        dirLight.position.y += (pointer.y - dirLight.position.y) * (delta * 6);
+        const targetLightX = parallaxEnabled ? pointer.x : 0.4;
+        const targetLightY = parallaxEnabled ? pointer.y : 1.0;
+        dirLight.position.x += (targetLightX - dirLight.position.x) * (delta * 6);
+        dirLight.position.y += (targetLightY - dirLight.position.y) * (delta * 6);
 
         renderer.render(scene, camera);
       }
