@@ -67,8 +67,8 @@
         display: flex;
         align-items: center;
         gap: 16px;
-        padding: 7px 16px;
-        background: rgba(18, 18, 24, 0.68);
+        padding: 8px 18px;
+        background: rgba(18, 18, 24, 0.72);
         backdrop-filter: blur(28px) saturate(180%);
         -webkit-backdrop-filter: blur(28px) saturate(180%);
         border: 1px solid rgba(255, 255, 255, 0.16);
@@ -95,14 +95,14 @@
         font-weight: 500;
         text-transform: uppercase;
         letter-spacing: 0.05em;
-        color: rgba(255, 255, 255, 0.6);
+        color: rgba(255, 255, 255, 0.65);
         white-space: nowrap;
       }
 
       .bar-slider {
         -webkit-appearance: none;
         appearance: none;
-        width: 80px;
+        width: 75px;
         height: 4px;
         background: rgba(255, 255, 255, 0.22);
         border-radius: 2px;
@@ -136,18 +136,11 @@
         cursor: pointer !important;
       }
 
-      /* iOS-style Parallax Toggle Switch */
-      .toggle-wrapper {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        cursor: pointer !important;
-      }
-
+      /* iOS-style Toggle Switch */
       .ios-switch {
         position: relative;
         display: inline-block;
-        width: 38px;
+        width: 36px;
         height: 20px;
       }
 
@@ -188,7 +181,7 @@
       }
 
       input:checked + .slider-switch:before {
-        transform: translateX(18px);
+        transform: translateX(16px);
         background-color: #0c0c10;
       }
 
@@ -198,25 +191,19 @@
         }
         .top-settings-bar {
           gap: 10px;
-          padding: 5px 12px;
+          padding: 6px 12px;
         }
         .bar-slider {
-          width: 60px;
+          width: 55px;
         }
       }
     </style>
 
-    <!-- Embedded font and background asset data for local file:// support -->
-    <script src="./fonts_data.js"></script>
+    <!-- Local Standalone Bundled Three.js (Zero Network / Zero CORS) -->
+    <script src="./three.bundle.js"></script>
 
-    <script type="importmap">
-      {
-        "imports": {
-          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-        }
-      }
-    </script>
+    <!-- Embedded font and background asset data -->
+    <script src="./fonts_data.js"></script>
   </head>
 
   <body>
@@ -242,6 +229,24 @@
           />
         </div>
 
+        <!-- 24-Hour Format Toggle -->
+        <div class="bar-item">
+          <label class="bar-label" for="format-checkbox">24H</label>
+          <label class="ios-switch">
+            <input type="checkbox" id="format-checkbox" checked />
+            <span class="slider-switch"></span>
+          </label>
+        </div>
+
+        <!-- Show Seconds Toggle -->
+        <div class="bar-item">
+          <label class="bar-label" for="seconds-checkbox">Seconds</label>
+          <label class="ios-switch">
+            <input type="checkbox" id="seconds-checkbox" />
+            <span class="slider-switch"></span>
+          </label>
+        </div>
+
         <!-- Parallax Toggle -->
         <div class="bar-item">
           <label class="bar-label" for="parallax-checkbox">Parallax</label>
@@ -253,17 +258,36 @@
       </div>
     </div>
 
-    <!-- Standalone Three.js Logic -->
-    <script type="module">
-      import * as THREE from "three";
-      import { FontLoader } from "three/addons/loaders/FontLoader.js";
-      import { TextGeometry } from "three/addons/geometries/TextGeometry.js";
-      import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+    <!-- Standalone Logic (Zero CORS, 100% offline & local) -->
+    <script>
+      const THREE = window.THREE;
+      const {
+        WebGLRenderer,
+        Scene,
+        PerspectiveCamera,
+        PMREMGenerator,
+        RoomEnvironment,
+        DirectionalLight,
+        MeshPhysicalMaterial,
+        Group,
+        Mesh,
+        ShaderMaterial,
+        PlaneGeometry,
+        Vector2,
+        TextureLoader,
+        FontLoader,
+        TextGeometry,
+        Clock,
+        Color,
+        ACESFilmicToneMapping,
+      } = THREE;
 
       // Font Configuration for Morganite
       const FONT_CONFIG = {
         size: 1.2,
+        sizeWithSeconds: 0.92,
         mobileSize: 0.7,
+        mobileSizeWithSeconds: 0.52,
         letterSpacing: -0.005,
         bevelThickness: 0.02,
       };
@@ -271,26 +295,29 @@
       // State
       let heightScale = 1.0;
       let cornerRoundness = 0.010;
+      let is24Hour = true;
+      let showSeconds = false;
       let parallaxEnabled = true;
+
       let parsedFont = null;
       const pointer = { x: 0, y: 0, targetX: 0, targetY: 0 };
       let lastRenderTime = "";
 
       // Canvas & Renderer
       const canvas = document.getElementById("webgl-canvas");
-      const renderer = new THREE.WebGLRenderer({
+      const renderer = new WebGLRenderer({
         canvas,
         antialias: true,
         powerPreference: "high-performance",
       });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
       renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMapping = ACESFilmicToneMapping;
       renderer.toneMappingExposure = 1.2;
 
       // Scene & Camera
-      const scene = new THREE.Scene();
-      const camera = new THREE.PerspectiveCamera(
+      const scene = new Scene();
+      const camera = new PerspectiveCamera(
         5,
         window.innerWidth / window.innerHeight,
         0.01,
@@ -300,20 +327,20 @@
       camera.lookAt(0, 0, 0);
 
       // Environment for Glass Reflections
-      const pmremGenerator = new THREE.PMREMGenerator(renderer);
+      const pmremGenerator = new PMREMGenerator(renderer);
       scene.environment = pmremGenerator.fromScene(
         new RoomEnvironment(),
         0.04
       ).texture;
 
       // Dynamic Light for Liquid Glass Transmission
-      const dirLight = new THREE.DirectionalLight(0xffffff, 8);
+      const dirLight = new DirectionalLight(0xffffff, 8);
       dirLight.position.set(0.4, 1, -0.2);
       scene.add(dirLight);
 
       // Liquid Glass Physical Material
-      const glassMaterial = new THREE.MeshPhysicalMaterial({
-        color: new THREE.Color(0xffffff),
+      const glassMaterial = new MeshPhysicalMaterial({
+        color: new Color(0xffffff),
         roughness: 0.23,
         transmission: 1.0,
         ior: 1.8,
@@ -327,18 +354,18 @@
       });
 
       // Clock Group & Mesh
-      const clockGroup = new THREE.Group();
+      const clockGroup = new Group();
       scene.add(clockGroup);
       let textMesh = null;
 
       // Background Plane with Aspect Ratio Shader
-      const bgMaterial = new THREE.ShaderMaterial({
+      const bgMaterial = new ShaderMaterial({
         uniforms: {
           map: { value: null },
           viewportResolution: {
-            value: new THREE.Vector2(window.innerWidth, window.innerHeight),
+            value: new Vector2(window.innerWidth, window.innerHeight),
           },
-          imageResolution: { value: new THREE.Vector2(20, 10) },
+          imageResolution: { value: new Vector2(20, 10) },
         },
         vertexShader: `
           varying vec2 vUv;
@@ -379,8 +406,8 @@
         depthWrite: false,
       });
 
-      const bgPlane = new THREE.Mesh(
-        new THREE.PlaneGeometry(2.8, 2.8),
+      const bgPlane = new Mesh(
+        new PlaneGeometry(2.8, 2.8),
         bgMaterial
       );
       bgPlane.position.set(0, 0, -1.5);
@@ -399,8 +426,8 @@
       }
 
       // Background Texture Loading (bg1)
-      const textureLoader = new THREE.TextureLoader();
-      const bgData = (window.BACKGROUNDS_DATA && window.BACKGROUNDS_DATA.bg1) || "./bg1.jpg";
+      const textureLoader = new TextureLoader();
+      const bgData = (window.BACKGROUNDS_DATA && window.BACKGROUNDS_DATA.bg1) || "./bg1.png";
       textureLoader.load(bgData, (tex) => {
         bgMaterial.uniforms.map.value = tex;
       });
@@ -416,18 +443,33 @@
         return null;
       }
 
-      // Time Format & Geometry Update
+      // Time Format Calculation
       function formatTime() {
         const now = new Date();
-        const hours = String(now.getHours()).padStart(2, "0");
+        let h = now.getHours();
+        if (!is24Hour) {
+          h = h % 12 || 12;
+        }
+        const hours = String(h).padStart(2, "0");
         const minutes = String(now.getMinutes()).padStart(2, "0");
+
+        if (showSeconds) {
+          const seconds = String(now.getSeconds()).padStart(2, "0");
+          return `${hours}:${minutes}:${seconds}`;
+        }
         return `${hours}:${minutes}`;
       }
 
       function updateClock() {
         const timeStr = formatTime();
         const isMobile = window.innerWidth < 768;
-        const size = isMobile ? FONT_CONFIG.mobileSize : FONT_CONFIG.size;
+        
+        let size;
+        if (showSeconds) {
+          size = isMobile ? FONT_CONFIG.mobileSizeWithSeconds : FONT_CONFIG.sizeWithSeconds;
+        } else {
+          size = isMobile ? FONT_CONFIG.mobileSize : FONT_CONFIG.size;
+        }
 
         const font = getFont();
         if (!font) return;
@@ -449,7 +491,7 @@
           textMesh.geometry.dispose();
           textMesh.geometry = geom;
         } else {
-          textMesh = new THREE.Mesh(geom, glassMaterial);
+          textMesh = new Mesh(geom, glassMaterial);
           clockGroup.add(textMesh);
         }
 
@@ -463,10 +505,11 @@
 
       // Periodic Clock Check
       setInterval(() => {
-        if (formatTime() !== lastRenderTime) {
+        const nextTime = formatTime();
+        if (nextTime !== lastRenderTime) {
           updateClock();
         }
-      }, 1000);
+      }, 200);
 
       // Pointer Interactivity
       window.addEventListener("pointermove", (e) => {
@@ -494,6 +537,18 @@
         clockGroup.scale.set(1, heightScale, 1);
       });
 
+      const formatCheckbox = document.getElementById("format-checkbox");
+      formatCheckbox.addEventListener("change", (e) => {
+        is24Hour = e.target.checked;
+        updateClock();
+      });
+
+      const secondsCheckbox = document.getElementById("seconds-checkbox");
+      secondsCheckbox.addEventListener("change", (e) => {
+        showSeconds = e.target.checked;
+        updateClock();
+      });
+
       const parallaxCheckbox = document.getElementById("parallax-checkbox");
       parallaxCheckbox.addEventListener("change", (e) => {
         parallaxEnabled = e.target.checked;
@@ -504,7 +559,7 @@
       });
 
       // Render Loop with Damping
-      const clock = new THREE.Clock();
+      const clock = new Clock();
       function animate() {
         requestAnimationFrame(animate);
 
@@ -514,7 +569,7 @@
         pointer.x += (pointer.targetX - pointer.x) * (delta * 6);
         pointer.y += (pointer.targetY - pointer.y) * (delta * 6);
 
-        // Subtle background parallax (only if parallax is active or returning to center)
+        // Subtle background parallax
         bgPlane.position.x +=
           (-pointer.x * 0.08 - bgPlane.position.x) * (delta * 6);
         bgPlane.position.y +=
