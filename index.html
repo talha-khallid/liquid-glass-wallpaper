@@ -423,9 +423,6 @@
         vPlaneHeight =
           2 * Math.tan(vFov / 2) * (camera.position.z - bgPlane.position.z);
         vPlaneWidth = vPlaneHeight * camera.aspect;
-        
-        const scaleFactor = parallaxEnabled ? 1.05 : 1.0;
-        bgPlane.scale.set(vPlaneWidth * scaleFactor, vPlaneHeight * scaleFactor, 1);
         bgMaterial.uniforms.viewportResolution.value.set(
           window.innerWidth,
           window.innerHeight
@@ -454,22 +451,30 @@
       }
 
       // Time Format Calculation
+      // Always use the toggle state, never system locale
       function formatTime() {
         const now = new Date();
-        let h = now.getHours();
+        const h24 = now.getHours();
+        let h = h24;
         if (!is24Hour) {
-          h = h % 12 || 12;
+          h = h24 % 12;
+          if (h === 0) h = 12;
         }
-        // In 24h mode: padded with leading zero ('09', '14')
-        // In 12h mode: clean format ('9', '11', '12')
-        const hours = is24Hour ? String(h).padStart(2, "0") : String(h);
+        const hours = String(h).padStart(2, "0");
         const minutes = String(now.getMinutes()).padStart(2, "0");
+        const seconds = String(now.getSeconds()).padStart(2, "0");
 
         if (showSeconds) {
-          const seconds = String(now.getSeconds()).padStart(2, "0");
           return `${hours}:${minutes}:${seconds}`;
         }
         return `${hours}:${minutes}`;
+      }
+
+      // Returns a stable "worst case" string for layout sizing
+      // Prevents jitter when digits change width (e.g. 1 vs 0)
+      function getLayoutString() {
+        if (showSeconds) return "00:00:00";
+        return "00:00";
       }
 
       function updateClock() {
@@ -486,6 +491,7 @@
         const font = getFont();
         if (!font) return;
 
+        // Build geometry for the actual time
         const geom = new TextGeometry(timeStr, {
           font: font,
           size: size,
@@ -497,13 +503,36 @@
           bevelThickness: FONT_CONFIG.bevelThickness,
         });
 
-        geom.center();
+        // Use the stable layout string to compute a fixed bounding box
+        // This prevents the clock from shifting left/right as digits change
+        const layoutGeom = new TextGeometry(getLayoutString(), {
+          font: font,
+          size: size,
+          height: 0.08,
+          bevelEnabled: false,
+          bevelSize: 0,
+          bevelSegments: 1,
+          curveSegments: 4,
+          bevelThickness: 0,
+        });
+        layoutGeom.computeBoundingBox();
+        const layoutBox = layoutGeom.boundingBox;
+        layoutGeom.dispose();
+
+        // Center based on the stable layout bounding box, not the actual time
+        geom.computeBoundingBox();
+        const actualBox = geom.boundingBox;
+        const offsetX = -((layoutBox.max.x + layoutBox.min.x) / 2);
+        const offsetY = -((actualBox.max.y + actualBox.min.y) / 2);
+        geom.translate(offsetX, offsetY, 0);
 
         if (textMesh) {
           textMesh.geometry.dispose();
           textMesh.geometry = geom;
+          textMesh.position.set(0, 0, 0);
         } else {
           textMesh = new Mesh(geom, glassMaterial);
+          textMesh.position.set(0, 0, 0);
           clockGroup.add(textMesh);
         }
 
@@ -585,16 +614,16 @@
         pointer.x += (pointer.targetX - pointer.x) * (delta * 6);
         pointer.y += (pointer.targetY - pointer.y) * (delta * 6);
 
-        // Target background zoom scale
-        const targetZoom = parallaxEnabled ? 1.05 : 1.0;
-        bgZoomScale += (targetZoom - bgZoomScale) * (delta * 6);
+        // Background scale: tiny 2% parallax margin when enabled
+        const targetZoom = parallaxEnabled ? 1.02 : 1.0;
+        bgZoomScale += (targetZoom - bgZoomScale) * (delta * 5);
         bgPlane.scale.set(vPlaneWidth * bgZoomScale, vPlaneHeight * bgZoomScale, 1);
 
         // Subtle background parallax (smoothly returns to 0 when disabled)
-        const targetPosX = parallaxEnabled ? -pointer.x * 0.08 : 0;
-        const targetPosY = parallaxEnabled ? -pointer.y * 0.05 : 0;
-        bgPlane.position.x += (targetPosX - bgPlane.position.x) * (delta * 6);
-        bgPlane.position.y += (targetPosY - bgPlane.position.y) * (delta * 6);
+        const targetPosX = parallaxEnabled ? -pointer.x * 0.04 : 0;
+        const targetPosY = parallaxEnabled ? -pointer.y * 0.025 : 0;
+        bgPlane.position.x += (targetPosX - bgPlane.position.x) * (delta * 5);
+        bgPlane.position.y += (targetPosY - bgPlane.position.y) * (delta * 5);
 
         // Dynamic light tracking through glass
         const targetLightX = parallaxEnabled ? pointer.x : 0.4;
