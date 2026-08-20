@@ -1,8 +1,8 @@
 import { useEffect, useRef, useLayoutEffect, useMemo } from "react";
-import { extend, useThree } from "@react-three/fiber";
+import { extend, useThree, useFrame } from "@react-three/fiber";
 import { shaderMaterial, useTexture, useVideoTexture } from "@react-three/drei";
 import * as THREE from "three";
-import { useControls } from "leva";
+import { easing } from "maath";
 import { useSnapshot } from "valtio";
 import { state } from "../store";
 
@@ -80,7 +80,6 @@ function VideoBackground({ videoNumber }) {
     []
   );
 
-  // Extend the material for use in React Three Fiber
   extend({ CustomVideoMaterial });
 
   const videoTexture = useVideoTexture(`/video_demo${videoNumber}.mp4`, {
@@ -95,7 +94,6 @@ function VideoBackground({ videoNumber }) {
     }
   }, [videoTexture]);
 
-  // Function to update dimensions
   const updateDimensions = () => {
     if (materialRef.current) {
       materialRef.current.viewportResolution.set(
@@ -108,7 +106,6 @@ function VideoBackground({ videoNumber }) {
     }
   };
 
-  // Initialize dimensions synchronously before first render
   useLayoutEffect(() => {
     updateDimensions();
     if (materialRef.current && videoTexture) {
@@ -116,17 +113,14 @@ function VideoBackground({ videoNumber }) {
     }
   }, []);
 
-  // Update viewport dimensions when they change
   useEffect(() => {
     updateDimensions();
   }, [viewport]);
 
-  // Listen for camera changes (FOV animations, etc.)
   useEffect(() => {
     updateDimensions();
   }, [camera.fov, camera.aspect]);
 
-  // Ensure texture is always applied when it changes
   useEffect(() => {
     if (materialRef.current && videoTexture) {
       materialRef.current.map = videoTexture;
@@ -151,29 +145,30 @@ function ImageBackground({ imageName }) {
   const materialRef = useRef();
   const meshRef = useRef();
 
-  const CustomVideoMaterial = shaderMaterial(
-    {
-      time: 0,
-      map: null,
-      viewportResolution: new THREE.Vector2(
-        window.innerWidth,
-        window.innerHeight
-      ),
-      videoResolution: new THREE.Vector2(20, 10),
-    },
-    // vertex shader
-    /*glsl*/ `
+  const CustomImageMaterial = useMemo(
+    () =>
+      shaderMaterial(
+        {
+          time: 0,
+          map: null,
+          viewportResolution: new THREE.Vector2(
+            window.innerWidth,
+            window.innerHeight
+          ),
+          videoResolution: new THREE.Vector2(20, 10),
+        },
+        // vertex shader
+        /*glsl*/ `
           varying vec2 vUv;
           varying vec2 vScreenPos;
           void main() {
             vUv = uv;
             vScreenPos = position.xy;
-            // gl_Position = vec4(position, 1.0);
             gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
           }
         `,
-    // fragment shader
-    /*glsl*/ `
+        // fragment shader
+        /*glsl*/ `
           uniform float time;
           uniform sampler2D map;
           uniform vec2 viewportResolution;
@@ -213,9 +208,11 @@ function ImageBackground({ imageName }) {
             gl_FragColor = vec4(finalColor, 1.0);
           }
         `
+      ),
+    []
   );
 
-  extend({ CustomVideoMaterial });
+  extend({ CustomImageMaterial });
 
   const imageTexture = useTexture(`/${imageName}.jpg`);
 
@@ -225,7 +222,6 @@ function ImageBackground({ imageName }) {
     }
   }, [imageTexture]);
 
-  // Function to update dimensions
   const updateDimensions = () => {
     if (materialRef.current) {
       materialRef.current.viewportResolution.set(
@@ -234,11 +230,10 @@ function ImageBackground({ imageName }) {
       );
     }
     if (meshRef.current) {
-      meshRef.current.scale.set(viewport.width / 1.5, viewport.height / 1.5, 1);
+      meshRef.current.scale.set(viewport.width / 1.3, viewport.height / 1.3, 1);
     }
   };
 
-  // Initialize dimensions synchronously before first render
   useLayoutEffect(() => {
     updateDimensions();
     if (materialRef.current && imageTexture) {
@@ -246,22 +241,39 @@ function ImageBackground({ imageName }) {
     }
   }, []);
 
-  // Update viewport dimensions when they change
   useEffect(() => {
     updateDimensions();
   }, [viewport]);
 
-  // Listen for camera changes (FOV animations, etc.)
   useEffect(() => {
     updateDimensions();
   }, [camera.fov, camera.aspect]);
 
-  // Ensure texture is always applied when it changes
   useEffect(() => {
     if (materialRef.current && imageTexture) {
       materialRef.current.map = imageTexture;
     }
   }, []);
+
+  // Smooth and subtle parallax on cursor movement
+  useFrame((state, delta) => {
+    if (meshRef.current) {
+      easing.damp(
+        meshRef.current.position,
+        "x",
+        -state.pointer.x * 0.08,
+        0.5,
+        delta
+      );
+      easing.damp(
+        meshRef.current.position,
+        "y",
+        -state.pointer.y * 0.05,
+        0.5,
+        delta
+      );
+    }
+  });
 
   return (
     <mesh
@@ -269,8 +281,8 @@ function ImageBackground({ imageName }) {
       ref={meshRef}
       scale={[viewport.width, viewport.height, 1]}
     >
-      <planeGeometry args={[2.5, 2.5]} />
-      <customVideoMaterial ref={materialRef} depthWrite={false} />
+      <planeGeometry args={[2.8, 2.8]} />
+      <customImageMaterial ref={materialRef} depthWrite={false} />
     </mesh>
   );
 }
@@ -284,6 +296,6 @@ export default function BackgroundImageCover() {
   return isVideo ? (
     <VideoBackground videoNumber={videoNumber} />
   ) : (
-    <ImageBackground imageName={background} />
+    <ImageBackground imageName={background || "bg1"} />
   );
 }

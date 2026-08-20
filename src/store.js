@@ -3,12 +3,11 @@ import { proxy } from "valtio";
 const state = proxy({
   isMobile: window.innerWidth < 768,
   finishedLoadingAsset: false,
-  hovered: false,
-  showSettings: false,
-  background: "video3",
-  reflectivity: 0.45,
-  isDragging: false,
-  display: "grid",
+  background: "bg1",
+  display: "clock",
+  font: "SixCaps",
+  heightScale: 0.85,
+  cornerRoundness: 0.010,
 });
 
 export { state };

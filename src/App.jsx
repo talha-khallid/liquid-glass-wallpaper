@@ -1,26 +1,22 @@
 import React, { Suspense } from "react";
 import { Canvas } from "@react-three/fiber";
 import Scene from "./components/Scene";
-import AnimateCamera from "./components/AnimateCamera";
 import Clock from "./components/Clock";
 import BackgroundImageCover from "./components/BackgroundImageCover";
 import DynamicLights from "./components/DynamicLights";
-import CustomCursor from "./components/CustomCursor";
 import * as THREE from "three";
 import LoadingScreen from "./components/LoadingScreen/LoadingScreen";
-import Settings from "./components/Settings";
+import TopMenu from "./components/TopMenu";
 
 function App() {
   return (
     <div className="main-container">
       <LoadingScreen />
+      <TopMenu />
       <Canvas {...canvasProps}>
         <Suspense fallback={null}>
           <Clock />
-          <Settings />
           <Scene />
-          <CustomCursor />
-          <AnimateCamera />
           <DynamicLights />
           <BackgroundImageCover />
         </Suspense>
